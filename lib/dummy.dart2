@@ -1,0 +1,7 @@
+setState(() {
+            _currentIndex = 2;
+            _graphValues = parsedRows.map((r) => r["num_value1"] as double).toList();
+            _graphFirstLines =
+                parsedRows.map((r) => r["description"].toString()).toList();
+            _graphFileName = "Filtered CSV Data";
+          });
