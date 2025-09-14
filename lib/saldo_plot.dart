@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:excel/excel.dart' as ex;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -18,7 +19,7 @@ class _SaldoPlotScreenState extends State<SaldoPlotScreen> {
   List<Map<String, dynamic>> entries = [];
   int? touchedIndex;
   String selectedFileContent = "";
-  bool showJsonTMP = false; // Toggle switch state
+  bool showJsonTMP = true; // default on
 
   @override
   void initState() {
@@ -36,9 +37,7 @@ class _SaldoPlotScreenState extends State<SaldoPlotScreen> {
 
     if (idx1 == -1 && idx2 == -1 && idx3 == -1) return 0.0;
 
-    final start = [idx1, idx2, idx3]
-        .where((i) => i != -1)
-        .reduce((a, b) => a > b ? a : b);
+    final start = [idx1, idx2, idx3].where((i) => i != -1).reduce(max);
     final after = text.substring(start);
 
     for (final m in regex.allMatches(after)) {
@@ -57,15 +56,16 @@ class _SaldoPlotScreenState extends State<SaldoPlotScreen> {
       return;
     }
 
+    // Only parse *.json files
     final files = dir
         .listSync()
         .whereType<File>()
-        .where((f) =>
-            showJsonTMP ? f.path.endsWith('.jsonTMP') : f.path.endsWith('.txt'))
+        .where((f) => f.path
+            .endsWith('.jsonTMP')) //žž Lovro ovo stvarno mora biti riješeno
         .toList();
 
     if (files.isEmpty) {
-      setState(() => selectedFileContent = "No matching files found.");
+      setState(() => selectedFileContent = "No JSON files found.");
       return;
     }
 
@@ -82,68 +82,42 @@ class _SaldoPlotScreenState extends State<SaldoPlotScreen> {
     for (var file in files) {
       try {
         final content = await file.readAsString();
-        if (showJsonTMP) {
+        final decoded = jsonDecode(content);
+
+        List<Map<String, dynamic>> items = [];
+        if (decoded is List) {
+          items = List<Map<String, dynamic>>.from(
+              decoded.map((e) => Map<String, dynamic>.from(e)));
+        } else if (decoded is Map) {
+          items = [Map<String, dynamic>.from(decoded)];
+        }
+
+        for (var e in items) {
+          double value = 0.0;
           try {
-            final decoded = jsonDecode(content);
+            final valStr = (e['tip'] ?? '0').toString().replaceAll(',', '.');
+            value = double.parse(valStr);
+          } catch (_) {}
 
-            List<Map<String, dynamic>> items = [];
-
-            if (decoded is List) {
-              items = List<Map<String, dynamic>>.from(
-                  decoded.map((e) => Map<String, dynamic>.from(e)));
-            } else if (decoded is Map) {
-              items = [Map<String, dynamic>.from(decoded)];
-            } else {
-              throw Exception('Unexpected JSON format');
-            }
-
-            for (var e in items) {
-              double value = 0.0;
-              //ovdje ima svega što nevalja
-              try {
-                final valStr =
-                    (e['tip'] ?? '0').toString().replaceAll(',', '.');
-                value = double.parse(valStr);
-              } catch (_) {}
-
-              tempEntries.add({
-                'file': file.path.split('/').last,
-                'value': value,
-                'date': DateTime.tryParse(e['datum'] ?? '') ?? randomDate(),
-                'content': content,
-                'file_image': e['file_image'] ?? 'gg',
-              });
-            }
-          } catch (e) {
-            tempEntries.add({
-              'file': file.path.split('/').last,
-              'value': -10.0,
-              'date': randomDate(),
-              'content': 'Error parsing JSONTMP: $e',
-              'file_image': 'rr',
-            });
-          }
-        } else {
-          // TXT or other file → random date
-          final value = extractUkupnoValues(content);
           tempEntries.add({
             'file': file.path.split('/').last,
             'value': value,
-            'date': randomDate(),
+            'date': DateTime.tryParse(e['datum'] ?? '') ?? randomDate(),
             'content': content,
+            'file_image': e['file_image'] ?? '',
           });
         }
       } catch (e) {
         tempEntries.add({
           'file': file.path.split('/').last,
-          'value': 0,
+          'value': -10.0,
           'date': randomDate(),
-          'content': 'Error reading file: $e',
+          'content': 'Error parsing JSON: $e',
+          'file_image': '',
         });
       }
     }
 
-    // Sort by date
     tempEntries.sort(
         (a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
 
@@ -177,23 +151,52 @@ class _SaldoPlotScreenState extends State<SaldoPlotScreen> {
                 "file": e['file']
               })
           .toList());
+    } else if (format == "xlsx") {
+      final excel = ex.Excel.createExcel();
+      final sheet = excel['Sheet1'];
+      sheet.appendRow(['Date', 'Value', 'File']);
+      for (var e in entries) {
+        sheet.appendRow([e['date'].toIso8601String(), e['value'], e['file']]);
+      }
+      final directory = await getApplicationDocumentsDirectory();
+      final path = "${directory.path}/saldo_plot_export.xlsx";
+      final fileBytes = excel.encode();
+      if (fileBytes != null) {
+        await File(path).writeAsBytes(fileBytes);
+      }
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Data exported to $path")));
+      return;
     }
 
     final directory = await getApplicationDocumentsDirectory();
     final path = "${directory.path}/saldo_plot_export.$format";
-    final file = File(path);
-    await file.writeAsString(output);
+    await File(path).writeAsString(output);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Data exported to $path")),
-    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text("Data exported to $path")));
   }
 
   @override
   Widget build(BuildContext context) {
     final spots = <FlSpot>[];
-    for (var i = 0; i < entries.length; i++) {
-      spots.add(FlSpot(i.toDouble(), entries[i]['value'].toDouble()));
+
+    if (showJsonTMP) {
+      for (var i = 0; i < entries.length; i++) {
+        final val = (entries[i]['value'] ?? 0).toDouble();
+        spots.add(FlSpot(i.toDouble(), val));
+      }
+    } else {
+      double total = 0.0;
+      for (var i = 0; i < entries.length; i++) {
+        // Ensure value is valid
+        final val = entries[i]['value'] != null
+            ? double.tryParse(entries[i]['value'].toString()) ?? 0
+            : 0;
+        total -= val;
+        spots.add(FlSpot(i.toDouble(), total));
+      }
     }
 
     return Scaffold(
@@ -202,33 +205,33 @@ class _SaldoPlotScreenState extends State<SaldoPlotScreen> {
         actions: [
           Row(
             children: [
-              const Text("JSONTMP"),
+              const Text("saldo <--> spline"), //JSONTMP
               Switch(
                 value: showJsonTMP,
                 onChanged: (val) {
-                  setState(() {
-                    showJsonTMP = val;
-                  });
-                  _loadFiles(); // reload files on toggle
+                  setState(() => showJsonTMP = val);
+                  _loadFiles();
                 },
               ),
             ],
           ),
           PopupMenuButton<String>(
             onSelected: _exportData,
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: "csv", child: Text("Export CSV")),
-              const PopupMenuItem(value: "txt", child: Text("Export TXT")),
-              const PopupMenuItem(value: "json", child: Text("Export JSON")),
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: "csv", child: Text("Export CSV")),
+              PopupMenuItem(value: "txt", child: Text("Export TXT")),
+              PopupMenuItem(value: "json", child: Text("Export JSON")),
+              PopupMenuItem(value: "xlsx", child: Text("Export XLSX")),
             ],
             icon: const Icon(Icons.save),
           ),
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            // Chart
             Expanded(
               flex: 2,
               child: entries.isEmpty
@@ -244,12 +247,11 @@ class _SaldoPlotScreenState extends State<SaldoPlotScreen> {
                                 if (idx >= 0 && idx < entries.length) {
                                   final date = entries[idx]['date'] as DateTime;
                                   return Transform.rotate(
-                                    angle: -pi *
-                                        80 /
-                                        180, // rotate 80° counter-clockwise
+                                    angle: -pi * 80 / 180,
                                     child: Text(
-                                        "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}", //"${date.month}/${date.day}",
-                                        style: const TextStyle(fontSize: 10)),
+                                      "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}",
+                                      style: const TextStyle(fontSize: 10),
+                                    ),
                                   );
                                 }
                                 return const SizedBox.shrink();
@@ -257,14 +259,13 @@ class _SaldoPlotScreenState extends State<SaldoPlotScreen> {
                             ),
                           ),
                           leftTitles: AxisTitles(
-                            sideTitles: SideTitles(showTitles: true),
-                          ),
+                              sideTitles: SideTitles(showTitles: true)),
                         ),
                         lineBarsData: [
                           LineChartBarData(
                             isCurved: true,
                             spots: spots,
-                            color: Colors.blue,
+                            color: showJsonTMP ? Colors.blue : Colors.red,
                             barWidth: 3,
                             dotData: FlDotData(
                               show: true,
@@ -273,21 +274,36 @@ class _SaldoPlotScreenState extends State<SaldoPlotScreen> {
                                   return FlDotCirclePainter(
                                     radius: 6,
                                     color: Colors.red,
-                                    strokeWidth: 2,
                                     strokeColor: Colors.black,
+                                    strokeWidth: 1,
                                   );
                                 }
                                 return FlDotCirclePainter(
                                   radius: 4,
                                   color: Colors.blue,
-                                  strokeWidth: 1,
-                                  strokeColor: Colors.black54,
+                                  strokeColor: Colors.black,
+                                  strokeWidth: 0.5,
                                 );
                               },
                             ),
                           ),
                         ],
+                        gridData: FlGridData(show: true),
+                        borderData: FlBorderData(show: true),
                         lineTouchData: LineTouchData(
+                          handleBuiltInTouches: true,
+                          touchCallback: (event, response) {
+                            if (response != null &&
+                                response.lineBarSpots != null &&
+                                response.lineBarSpots!.isNotEmpty) {
+                              setState(() {
+                                touchedIndex =
+                                    response.lineBarSpots!.first.x.toInt();
+                                selectedFileContent =
+                                    entries[touchedIndex!]['content'];
+                              });
+                            }
+                          },
                           touchTooltipData: LineTouchTooltipData(
                             getTooltipColor: (touchedSpot) =>
                                 Colors.black.withOpacity(0.7),
@@ -302,180 +318,155 @@ class _SaldoPlotScreenState extends State<SaldoPlotScreen> {
                               }).toList();
                             },
                           ),
-                          handleBuiltInTouches: true,
-                          touchCallback: (event, response) {
-                            if (response != null &&
-                                response.lineBarSpots != null &&
-                                response.lineBarSpots!.isNotEmpty) {
-                              setState(() {
-                                touchedIndex =
-                                    response.lineBarSpots!.first.x.toInt();
-                                selectedFileContent =
-                                    entries[touchedIndex!]['content'];
-                              });
-                            }
-                          },
                         ),
-                        gridData: FlGridData(show: true),
-                        borderData: FlBorderData(show: true),
                       ),
                     ),
             ),
+            // Bottom panel
             Expanded(
               flex: 1,
-              child: Column(
-                children: [
-                  // Always show middle panel even if file_image is null/empty
-                  if (touchedIndex != null)
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      margin: const EdgeInsets.only(bottom: 8),
-                      color: Colors.grey.shade100,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Left: show filename or placeholder
-                          Expanded(
-                            flex: 2,
-                            child: SingleChildScrollView(
-                              child: Builder(
-                                builder: (context) {
-                                  // Extract the entry
-                                  final entry = entries[touchedIndex!];
-
-                                  // Print it to console
-                                  //print("DEBUG ENTRY: ${entry['file_image']}");
-
-                                  // Return the Text widget with whatever you want
-                                  return Text(
-                                      "click on image--> \n (zoom/back) -->"); //Text(                                     "📌 $entry",                                    style: const TextStyle(                                         fontSize: 12, color: Colors.black87),                                   );
-                                },
+              child: touchedIndex != null
+                  ? Column(
+                      children: [
+                        // Image + info row
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          margin: const EdgeInsets.only(bottom: 8),
+                          color: Colors.grey.shade100,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Left info
+                              Expanded(
+                                flex: 2,
+                                child: SingleChildScrollView(
+                                  child: Text(
+                                    "File: ${entries[touchedIndex!]['file']}\nValue: ${entries[touchedIndex!]['value']}\nDate: ${entries[touchedIndex!]['date']}\n\nClick & zoom the image  😉 ----->",
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // Right: the image or placeholder icon
-                          Expanded(
-                            flex: 1,
-                            child: Builder(
-                              builder: (context) {
-                                final filePath = entries[touchedIndex!]
-                                            ['file_image']
-                                        ?.toString() ??
-                                    '';
-                                if (filePath.isEmpty ||
-                                    !File(filePath).existsSync()) {
-                                  return const Icon(Icons.image_not_supported,
-                                      size: 48, color: Colors.grey);
-                                }
-
-                                return GestureDetector(
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => Scaffold(
-                                          backgroundColor: Colors.black,
-                                          appBar: AppBar(
-                                            backgroundColor: Colors.black,
-                                            leading: IconButton(
-                                              icon: const Icon(Icons.arrow_back,
-                                                  color: Colors.white),
-                                              onPressed: () =>
-                                                  Navigator.pop(context),
-                                            ),
-                                          ),
-                                          body: Center(
-                                            child: Hero(
-                                              tag: 'image_$filePath',
-                                              child: InteractiveViewer(
-                                                panEnabled: true,
-                                                boundaryMargin:
-                                                    const EdgeInsets.all(20),
-                                                minScale: 0.5,
-                                                maxScale: 4,
-                                                child: Image.file(
-                                                  File(filePath),
-                                                  fit: BoxFit.contain,
-                                                  errorBuilder: (context, error,
-                                                          stackTrace) =>
-                                                      const Icon(
-                                                          Icons.broken_image,
-                                                          size: 48,
-                                                          color: Colors.red),
+                              const SizedBox(width: 8),
+                              // Right Hero image
+                              Expanded(
+                                flex: 1,
+                                child: Builder(
+                                  builder: (context) {
+                                    final filePath = entries[touchedIndex!]
+                                                ['file_image']
+                                            ?.toString() ??
+                                        '';
+                                    if (filePath.isEmpty ||
+                                        !File(filePath).existsSync()) {
+                                      return const Icon(
+                                          Icons.image_not_supported,
+                                          size: 48,
+                                          color: Colors.grey);
+                                    }
+                                    return GestureDetector(
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => Scaffold(
+                                              backgroundColor: Colors.black,
+                                              appBar: AppBar(
+                                                backgroundColor: Colors.black,
+                                                leading: IconButton(
+                                                  icon: const Icon(
+                                                      Icons.arrow_back,
+                                                      color: Colors.white),
+                                                  onPressed: () =>
+                                                      Navigator.pop(context),
+                                                ),
+                                              ),
+                                              body: Center(
+                                                child: Hero(
+                                                  tag: 'image_$filePath',
+                                                  child: InteractiveViewer(
+                                                    panEnabled: true,
+                                                    boundaryMargin:
+                                                        const EdgeInsets.all(
+                                                            20),
+                                                    minScale: 0.5,
+                                                    maxScale: 4,
+                                                    child: Image.file(
+                                                      File(filePath),
+                                                      fit: BoxFit.contain,
+                                                      errorBuilder: (context,
+                                                              error,
+                                                              stackTrace) =>
+                                                          const Icon(
+                                                              Icons
+                                                                  .broken_image,
+                                                              size: 48,
+                                                              color:
+                                                                  Colors.red),
+                                                    ),
+                                                  ),
                                                 ),
                                               ),
                                             ),
                                           ),
+                                        );
+                                      },
+                                      child: Hero(
+                                        tag: 'image_$filePath',
+                                        child: Image.file(
+                                          File(filePath),
+                                          fit: BoxFit.cover,
+                                          height: 100,
+                                          errorBuilder:
+                                              (context, error, stackTrace) =>
+                                                  const Icon(Icons.broken_image,
+                                                      size: 48,
+                                                      color: Colors.red),
                                         ),
                                       ),
                                     );
                                   },
-                                  child: Hero(
-                                    tag: 'image_$filePath',
-                                    child: Image.file(
-                                      File(filePath),
-                                      fit: BoxFit.cover,
-                                      height: 100,
-                                      errorBuilder:
-                                          (context, error, stackTrace) =>
-                                              const Icon(Icons.broken_image,
-                                                  size: 48, color: Colors.red),
-                                    ),
-                                  ),
-                                );
-                              },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Scrollable content
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.grey.shade400),
+                            ),
+                            child: SingleChildScrollView(
+                              child: Text(
+                                selectedFileContent,
+                                style: const TextStyle(fontSize: 12),
+                              ),
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-
-                  // The usual scrollable text box
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey.shade400),
-                      ),
-                      child: SingleChildScrollView(
+                        ),
+                      ],
+                    )
+                  : SingleChildScrollView(
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade400),
+                        ),
                         child: Text(
                           selectedFileContent,
                           style: const TextStyle(fontSize: 12),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
             ),
           ],
         ),
       ),
-      bottomNavigationBar: touchedIndex != null
-          ? Container(
-              padding: const EdgeInsets.all(12),
-              color: Colors.grey.shade200,
-              child: showJsonTMP
-                  ? SizedBox(
-                      height: 60, // limit height so it won’t overflow
-                      child: SingleChildScrollView(
-                        child: Text(
-                          "📌 " + entries[touchedIndex!]['content'] ?? "",
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.black87),
-                        ),
-                      ),
-                    )
-                  : Text(
-                      "📌 Selected: ${entries[touchedIndex!]['file']} → ${entries[touchedIndex!]['value']}",
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-            )
-          : null,
     );
   }
 }

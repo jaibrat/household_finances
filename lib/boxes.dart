@@ -43,23 +43,39 @@ Future<File?> getLastJsonTmpFile() async {
   return files.first;
 }
 
-Future<void> printLastJsonTmpFile() async {
-  final file = await getLastJsonTmpFile();
-  if (file == null) {
-    print("No .jsonTMP files found.");
-    return;
-  }
+Future<String> printLastJsonTmpFile() async {
+  try {
+    final file = await getLastJsonTmpFile();
+    if (file == null) {
+      print("No .jsonTMP files found.");
+      return "0.0";
+    }
 
-  final content = await file.readAsString();
-  print("Last .jsonTMP file: ${file.path}");
-  print("Content:\n$content");
+    final content = await file.readAsString();
+    print('++++++++++++++++++++');
+    print("Last .jsonTMP file: ${file.path}");
+    print("Content:\n$content");
+    print('++++++++++++++++++++');
+
+    // Example: return some dummy value (or compute actual success rate)
+    return content.toString();
+  } catch (e) {
+    print("Error reading .jsonTMP file: $e");
+    return "0.0";
+  }
 }
 
-void DO_THIS() async {
-  print("🔥 DO_THIS executed!");
-  await printLastJsonTmpFile(); //just for debug
-  print("🔥 done executed!");
-  // TODO: put here the actual logic you want executed when called
+Future<String> DO_THIS() async {
+  try {
+    print("🔥 DO_THIS executed!");
+    final success_rate = await printLastJsonTmpFile(); //just for debug
+    print("🔥 done executed!");
+    return success_rate;
+    // TODO: put here the actual logic you want executed when called
+  } catch (e) {
+    print("❌ Error in DO_THIS: $e");
+    return "0"; // return 0 on error for consistency with success_rate type
+  }
 }
 
 double convertToNumeric(String input) {

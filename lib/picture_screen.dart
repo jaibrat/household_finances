@@ -24,8 +24,8 @@ class PictureScreen extends StatelessWidget {
       File destinationFile = File(destinationPath);
       await destinationFile.writeAsBytes(fileBytes);
       print('File copied: $destinationPath');
-    } catch (e) {
-      print('Error copying file: $e');
+    } catch (e, st) {
+      print('Error copying file: $e\n$st');
     }
   }
 
@@ -35,64 +35,94 @@ class PictureScreen extends StatelessWidget {
       count += 1;
       await FileStorage.writeCounter(count.toString(), 'counter2.txt');
       print('Counter incremented: $count');
-    } catch (e) {
-      print('Error incrementing counter: $e');
+    } catch (e, st) {
+      print('Error incrementing counter: $e\n$st');
+    }
+  }
+
+  Future<void> performOCR(BuildContext context) async {
+    try {
+      final image = File(picture.path);
+      final helper = MLHelper();
+      final result = await helper.textFromImage(image);
+
+      try {
+        await incrementCounter();
+      } catch (e, st) {
+        print('Error updating counter inside OCR: $e\n$st');
+      }
+
+      try {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => ResultScreen(result, image)),
+        );
+      } catch (e, st) {
+        print('Error navigating to ResultScreen: $e\n$st');
+      }
+    } catch (e, st) {
+      print('Error performing OCR: $e\n$st');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final deviceHeight = MediaQuery.of(context).size.height;
+    try {
+      final deviceHeight = MediaQuery.of(context).size.height;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Picture')),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          Text('Path: ${picture.path}'),
-          SizedBox(
-            height: deviceHeight / 1.5,
-            child: Image.file(File(picture.path)),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              ElevatedButton(
-                child: const Text('OCR'),
-                onPressed: () async {
-                  final image = File(picture.path);
-                  final helper = MLHelper();
-                  final result =
-                      await helper.textFromImage(image); //textFromImage(image);
-
-                  await FileStorage.writeCounter(
-                      result, 'myFile${person.age}.txt');
-
-                  await incrementCounter();
-
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => ResultScreen(result, image)),
-                  );
+      return Scaffold(
+        appBar: AppBar(title: const Text('Picture')),
+        body: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            Text(
+                'Image saved (you can OCR-analyse later)\nPath: ${picture.path}'),
+            SizedBox(
+              height: deviceHeight / 1.5,
+              child: Image.file(
+                File(picture.path),
+                errorBuilder: (context, error, stackTrace) {
+                  print('Error loading image: $error\n$stackTrace');
+                  return const Icon(Icons.broken_image,
+                      size: 48, color: Colors.red);
                 },
               ),
-              ElevatedButton(
-                child: const Text('Go back (2)'),
-                onPressed: () {
-                  // Go back to camera to take a new picture
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => CameraScreen(),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton(
+                  child: const Text('OCR (analyse now)'),
+                  onPressed: () async {
+                    await performOCR(context);
+                  },
+                ),
+                ElevatedButton(
+                  child: const Text('Go back (OCR later)'),
+                  onPressed: () {
+                    try {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(builder: (context) => CameraScreen()),
+                      );
+                    } catch (e, st) {
+                      print('Error navigating back to CameraScreen: $e\n$st');
+                    }
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    } catch (e, st) {
+      print('Error building PictureScreen: $e\n$st');
+      return Scaffold(
+        appBar: AppBar(title: const Text('Picture')),
+        body: Center(
+          child: Text('Error loading screen: $e'),
+        ),
+      );
+    }
   }
 }

@@ -50,7 +50,7 @@ class PictureScreen extends StatelessWidget {
       body: Column(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          Text('Path: ${picture.path}'),
+          Text('Path2: ${picture.path}'),
           SizedBox(
             height: deviceHeight / 1.5,
             child: Image.file(File(picture.path)),
@@ -59,30 +59,16 @@ class PictureScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               ElevatedButton(
-                child: const Text('OCR'),
+                child: const Text('OCR1'),
                 onPressed: () async {
                   final image = File(picture.path);
                   final helper = MLHelper();
                   final result = await helper.textFromImage(image);
 
-                  await FileStorage.writeCounter(
-                      result, 'myFile${person.age}.txt');
+                  //await FileStorage.writeCounter(
+                  //     result, 'myFile${person.age}.txt');
 
                   await incrementCounter();
-
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => ResultScreen(result, image)),
-                  );
-                },
-              ),
-              ElevatedButton(
-                child: const Text('Što je ovo?'),
-                onPressed: () async {
-                  final image = File(picture.path);
-                  final helper = MLHelper();
-                  final result = await helper.labelImage(image);
 
                   Navigator.push(
                     context,

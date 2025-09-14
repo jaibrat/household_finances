@@ -107,7 +107,8 @@ class _CameraScreenState extends State<CameraScreen> {
       MaterialPageRoute(
         builder: (_) => Scaffold(
           appBar: AppBar(
-            title: const Text("Go Back"),
+            title: const Text("Cache Explorer"),
+            automaticallyImplyLeading: false, // ✅ hides the back arrow
           ),
           body: CacheExplorer(initialDir: dir),
         ),
@@ -241,10 +242,7 @@ class _CacheExplorerState extends State<CacheExplorer> {
           padding: const EdgeInsets.all(8),
           child: Row(
             children: [
-              IconButton(
-                onPressed: _goUp,
-                icon: const Icon(Icons.arrow_upward),
-              ),
+              // ❌ Removed the "up" arrow button
               Expanded(child: Text(currentDir.path)),
             ],
           ),

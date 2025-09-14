@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart';
 
@@ -17,19 +18,23 @@ class CombinedScreen extends StatefulWidget {
 
 class _CombinedScreenState extends State<CombinedScreen> {
   String message = "";
-  String mlResult = "";
+  String mlResult = "1. Save Image <-- PDF\n2. Run ML to check result";
 
   Uint8List? lastImageBytes;
 
   Future<void> saveImage(Uint8List imageBytes) async {
     final externalDir = await getExternalStorageDirectory();
-    final filePath = '${externalDir?.path}/my_image5.jpg';
+    final now = DateTime.now();
+    final formatter = DateFormat('yyyyMMdd_HHmmss'); // e.g. 20250914_153045
+    final timestamp = formatter.format(now);
+
+    final filePath = '${externalDir?.path}/my_image_$timestamp.jpg';
     final file = File(filePath);
     await file.writeAsBytes(imageBytes);
     print("✅ Image saved at: $filePath");
     // App's cache directory
     final cacheDir = await getTemporaryDirectory();
-    final filePath2 = '${cacheDir.path}/my_PDF_2_image.jpg';
+    final filePath2 = '${cacheDir.path}/my_PDF_2_image_$timestamp.jpg';
 
     final file2 = File(filePath2);
     await file2.writeAsBytes(imageBytes);
@@ -40,7 +45,7 @@ class _CombinedScreenState extends State<CombinedScreen> {
   Future<void> getImage2() async {
     setState(() {
       message = "Processing PDF...";
-      mlResult = "";
+      mlResult = "dummy job";
     });
 
     final image = await getImage3();
@@ -75,7 +80,11 @@ class _CombinedScreenState extends State<CombinedScreen> {
 
       // Call MLHelper method
       final externalDir = await getExternalStorageDirectory();
-      final filePath = '${externalDir?.path}/my_image5.jpg';
+      final now = DateTime.now();
+      final formatter = DateFormat('yyyyMMdd_HHmmss'); // e.g. 20250914_153045
+      final timestamp = formatter.format(now);
+
+      final filePath = '${externalDir?.path}/my_image_$timestamp.jpg';
       final file = File(filePath);
       final result = await mlHelper.textFromImage(
           file); //textFromImage(file);//final result = await MLHelper.textFromImage(file);
@@ -129,7 +138,7 @@ class _CombinedScreenState extends State<CombinedScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('PDF-proc.sing Screen')),
+      appBar: AppBar(title: const Text('Convert PDF to Image & check it')),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

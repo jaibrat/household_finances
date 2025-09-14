@@ -62,17 +62,14 @@ class _ResultScreenState extends State<ResultScreen> {
               ),
               const SizedBox(height: 16),
               ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   // 👇 Your action here
-                  DO_THIS();
+                  final success_r = await DO_THIS();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text(
-                            "(usless) DO_THIS executed! (read/write *.jsonTMP)")),
+                    SnackBar(content: Text("Extracted INFO: ${success_r}.")),
                   );
                 },
-                child: const Text(
-                    "(usless) Run DO_THIS -what boxes already saved-"),
+                child: const Text("See extracted INFO"),
               ),
               const SizedBox(height: 24),
             ],

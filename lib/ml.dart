@@ -1,11 +1,9 @@
 import 'dart:io';
 
 //import 'package:flutter_tesseract_ocr/flutter_tesseract_ocr.dart';
-import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
-import 'package:google_mlkit_language_id/google_mlkit_language_id.dart';
+//import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
+//import 'package:google_mlkit_language_id/google_mlkit_language_id.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-
-import 'classifier.dart';
 
 class MLHelper {
   Future<String> textFromImage2DE(File image) async {
@@ -78,35 +76,5 @@ class MLHelper {
 
     await textRecognizer.close();
     return tableTXT;
-  }
-
-  Future<String> labelImage(File image) async {
-    final inputImage = InputImage.fromFile(image);
-    final options = ImageLabelerOptions(confidenceThreshold: 0.5);
-    final imageLabeler = ImageLabeler(options: options);
-
-    final labels = await imageLabeler.processImage(inputImage);
-    String result = '';
-    for (final label in labels) {
-      result += '${label.index}: ${label.label} - ${label.confidence * 100}%\n';
-    }
-    return result;
-  }
-
-  Future<String> identifyLanguage(String text) async {
-    final languageIdentifier = LanguageIdentifier(confidenceThreshold: 0.5);
-    final languages = await languageIdentifier.identifyPossibleLanguages(text);
-    String result = '';
-    for (final language in languages) {
-      result +=
-          'Language: ${language.languageTag} - Confidence: ${language.confidence * 100}%\n';
-    }
-    return result;
-  }
-
-  Future<String> classifyText(String message) async {
-    final classifier = Classifier();
-    final value = await classifier.classify(message);
-    return value > 0 ? 'Positive sentiment' : 'Negative sentiment';
   }
 }
