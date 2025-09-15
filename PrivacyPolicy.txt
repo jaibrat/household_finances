@@ -1,0 +1,3 @@
+Privacy Policy for FinanceFriend2: collecting receipts
+
+This app may access your device camera to allow you to capture receipts. We do not store or share your photos. All images remain on your device unless you explicitly export them.
